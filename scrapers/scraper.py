@@ -1,36 +1,67 @@
 import asyncio
 from playwright.async_api import async_playwright
 import json
+import os
 
-async def scrape_competitor_data(product_url):
-    async with async_playwright() as p:
-        # Launch browser in 'stealth' mode
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+async def scrape_product_reviews(page, product_url):
+    """Helper function to scrape reviews for a single URL"""
+    print(f"🔍 Scraping all reviews from: {product_url}")
+    try:
+        # Navigate and wait for content
+        await page.goto(product_url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_selector('[data-hook="review-body"]', timeout=15000)
+
+        # Extraction logic
+        review_elements = await page.locator('[data-hook="review-body"] >> span').all_inner_texts()
+        all_reviews = [text.strip() for text in review_elements if len(text.strip()) > 20]
         
-        print(f"🔍 Accessing: {product_url}")
-        await page.goto(product_url)
-
-        # Wait for reviews to load
-        await page.wait_for_selector('.review-text-content')
-
-        # 1. Extract Positive Reviews (Winning Features)
-        positives = await page.locator('.review-rating[data-hook="review-star-rating"]:has-text("5.0 out of 5 stars")').all_inner_texts()
-        
-        # 2. Extract Negative Reviews (The "Gaps")
-        negatives = await page.locator('.review-text-content:below(:text("1.0 out of 5 stars"))').all_inner_texts()
-
-        data = {
+        return {
             "source": product_url,
-            "top_wins": positives[:5],
-            "top_complaints": negatives[:10]
+            "review_count": len(all_reviews),
+            "raw_reviews": all_reviews
         }
+    except Exception as e:
+        print(f"⚠️ Failed to scrape {product_url}: {e}")
+        return None
 
-        with open('market_gap.json', 'w') as f:
-            json.dump(data, f, indent=4)
+async def run_batch_scrape():
+    # 1. Load the industry intelligence data
+    data_path = 'data/industry_intelligence.json'
+    
+    if not os.path.exists(data_path):
+        print(f"❌ Error: {data_path} not found. Run the analyst first.")
+        return
+
+    with open(data_path, 'r', encoding='utf-8') as f:
+        competitor_list = json.load(f) # competitor_list is now your array of objects/URLs
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
+
+        final_results = []
+
+        # 2. Iterate over the URLs found by the industry analyst
+        # Assuming industry_analyst saved a list of dictionaries with a 'url' key
+        for entry in competitor_list:
+            url = entry if isinstance(entry, str) else entry.get('url')
+            if url:
+                result = await scrape_product_reviews(page, url)
+                if result:
+                    final_results.append(result)
+                
+                # Ethical/Anti-Bot delay
+                await asyncio.sleep(2)
+
+        # 3. Save the final deep-dive data
+        with open('data/raw_reviews.json', 'w', encoding='utf-8') as f:
+            json.dump(final_results, f, indent=4, ensure_ascii=False)
         
+        print(f"✅ Successfully processed {len(final_results)} products. Data saved.")
         await browser.close()
-        print("✅ Data saved to market_gap.json")
 
-# Run it
-asyncio.run(scrape_competitor_data("https://www.amazon.com/Amazon-Basics-Cancelling-Headphones-Bluetooth/dp/B0D46JP795/ref=sr_1_1_ffob_sspa?dib=eyJ2IjoiMSJ9.2QJaOaxqyyzZACh0Dbh27H-VFGsztVVMU425FIXtUE6ilEu2hZiD061NqeDcxjL-azemMQlbq51cf9K46EyiRqUzuku1GnbNwygM7ug92VC3s5TA6obkVLkfL7rZxKvo5roIci_Jxd7251bkE-Sz4n3InlJY3Xf34cJYsGsP27zQHsflVNAsZfRzkT3VqRugcZVu_crQIvi_M1-pAL3pwQ5W2E0lkiTbMz99d6xnqVI.7hsHnWKD_DesIdQGEGjDwNwmYrf8ZtkKrw5xu7lQE8k&dib_tag=se&keywords=Noise+Canceling+Headphones&qid=1772161804&sr=8-1-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&psc=1"))
+if __name__ == "__main__":
+    asyncio.run(run_batch_scrape())

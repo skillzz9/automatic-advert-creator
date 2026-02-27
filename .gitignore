@@ -1,0 +1,40 @@
+# --- Security & Credentials ---
+# Never commit your API keys or secret tokens
+.env
+secrets.json
+
+# --- Data & Outputs ---
+# Ignore your raw/processed data to keep the repo lightweight
+data/
+*.json
+!industry_intelligence.json  # Optional: keep this if you want an example in the repo
+
+# --- Python Environment ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+bin/
+include/
+lib/
+share/
+
+# --- Tools & Browsers ---
+# Playwright/Browser artifacts
+node_modules/
+.playwright/
+browser_data/
+test-results/
+playwright-report/
+blob-report/
+
+# --- IDEs & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
